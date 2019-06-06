@@ -1,0 +1,603 @@
+---
+title: "Pre-processing the Heart Disease Data Set"
+author: "Alistair Grevis-James (s3644119) and Christopher Kaias (s3090801)"
+subtitle: Assignment 1, MATH2319, Semester 1, 2019
+output:
+  pdf_document:
+    toc: yes
+  html_notebook:
+    toc: yes
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r, include = FALSE}
+options(knitr.table.format = "html")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The required libraries were imported into the RStudio interactive development environment, followed by the .csv file “heart.csv” as `ds`[^2]. The data was then evaluate for data types, outliers and expored through visualization.
+
+### Data Set
+The "Heart Disease Data Set" was made publically available in 1988 on the UCI Machine Learning Repository, as a multivariate dataset containing categorical, integer and real values with a dimensionality of 303 instances over 74 attributes[^1]. It has subsequently been made available on Kaggle.com, where a subset has been created consisting of 303 instances over 14 attributes[^2]. All published experiments performed using this data are concerned with this subset only, and consequently this subset will be the focus of our investigation. 
+
+#### Features
+The "Heart Disease Data Set" from Kaggle.com, consists of 303 instances over 14 attributes. The summary table below outlines the description for each attribute. 
+
+ Attribute | Description
+---------- | ------------------------------------------------- 
+`age`      | The age of the participants (years)
+`sex`      | The sex of the participant (1 = Male, 0 = Female)
+`cp`       | Chest pain type (0 = typical angina, 1 = atypical angina, 2 = non-anginal pain, 3 = asymptomatic)   
+`trestbps` | Resting blood pressure, on adminssion to hospital (mm Hg) 
+`chol`     | Blood serum cholesterol (mg/dl) 
+`fbs`      | Blood sugar level, where fasting blood sugar > 120 mg/dl (1 = true, 0 = false)
+`restecg`  | Resting electrocardiographic results (Value 0: normal, Value 1: having ST-T wave abnormality (T wave  inversions and/or ST elevation or depression of > 0.05 mV), Value 2: showing probable or definite left ventricular  hypertrophy by Estes' criteria) 
+`thalach`  | Maximum heart rate achieved 
+`exang`    | Exercise induced angina (1 = yes, 0 = no) 
+`oldpeak`  | ST depression induced by exercise relative to rest
+`slope`    | The slope of the peak exercise ST segment (Value 1: upsloping, Value 2: flat, Value 3: downsloping)
+`ca`       | Number of major vessels (0-3) colored by flourosopy
+`thal`     | Thal: 3 = normal; 6 = fixed defect; 7 = reversable defect
+`target`   | Diagnosis of heart disease - angiographic disease status (Value 0: < 50% diameter narrowing, Value 1: > 50% diameter narrowing)
+
+#### Target Feature
+The response feature is `target`. This attribute respresents the diagnosis of heart disease with respect to angiographic disease status, where
+* Value 0: < 50% Diameter Narrowing, indicating absence of heart disease
+* Value 1: > 50% Diameter Narrowing, indicating presence of heart disease
+The goal is to use the first 13 features (above) to predict if a patient has heart disease. Our machine learning model will thus be a classifier.
+
+## Data Pre-processing
+
+### Required packages 
+The following packages were imported to assist with our analysis.
+```{r, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(dplyr) # Section Y
+library(plyr)
+library(tidyr)
+library(readr)
+library(outliers)
+library(ggplot2)
+library(knitr) # Section X
+library(kableExtra)
+```
+
+### Importing the Data
+The `readr` function was used to import the data as shown below.
+```{r, message=FALSE, warning=FALSE, paged.print=TRUE}
+#setwd("/Users/alistairgj/Documents/GitHub/ML_Preprocessing")
+ds <- read.csv("heart.csv") # Importing 
+```
+
+### Checking the Data
+The data was first checked for dimensionality, followed by checking of the column names. The dimensionality checked produced the expected result [303 14] as did the attribute name check.
+```{r}
+# Checking dimensionality
+dim(ds)
+```
+
+```{r}
+# Checking the column names
+colnames(ds)
+```
+These data were then tabulated with the following script, to determine native data type, `Attribute_Class`, and `NA_Count`. It was determined that no NA values were present in the dataset.
+```{r, message=FALSE, warning=FALSE, paged.print=TRUE}
+data.frame(Attribute_Number = c(1:14), Attribute_Name = names(ds), Attribute_Class = sapply(ds, class),
+           NA_Count = sapply(ds, function(y) sum(length(which(is.na(y))))), row.names = NULL) %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),  font_size = 12)
+```
+
+### Adjusting the native data types
+
+Ensuring data is of the correct type is not only best practice, it is also critical in the production of machine learning models. The above table demonstrates that many of the attributes have been classified as integers. Recall from the data description above that for the attribute `sex`, the value `male` is denoted by a `1`, while the value `female` is denoted by a value of `0`. Our data set has been imported and interpretted in such a way that `male` and `female` have been allocated numeric, rather than categorical (boolean / factor) values.
+
+This poses two (interrelated) problems
+1. Integer values are continuous, and will fundamentally be interpretted differently from categorical variables by a machine learning model
+2. Certain classifiers (for example K-nearest neighbor) are reliant on the calculation of euclidean distances to make determination with respect to classification. The presence of attributes incorrectly allocated to the type integer, or numeric, will potentially be erroneously used during training as predicitive features.
+
+The following table surmizes the native and desired type of each value. 
+
+ Attribute | Native    | Desired   | Comment
+---------- | -------   |---------  |---------------- 
+`age`      | `integer` | `integer` | Integer is suitable (continuous variable)
+`sex`      | `integer` | `logical` | 1 (Male) = TRUE & 0 (Female) = FALSE
+`cp`       | `integer` | `factor`  | This is a categorical attibrite that can take 4 values   
+`trestbps` | `integer` | `integer` | Integer is suitable (continuous variable)
+`chol`     | `integer` | `integer` | Integer is suitable (continuous variable)
+`fbs`      | `integer` | `logical` | > 120 mg/dl = TRUE & <= 120 mg/dl = FALSE 
+`restecg`  | `integer` | `factor`  | This is a categorical attibrite that can take 3 values 
+`thalach`  | `integer` | `integer` | Integer is suitable (continuous variable)
+`exang`    | `integer` | `logical` | 1 (yes) = TRUE & 0 (no) = FALSE 
+`oldpeak`  | `numeric` | `numeric` | Numeric is suitable (continuous variable)
+`slope`    | `integer` | `factor`  | This is a categorical attibrite that can take 3 values
+`ca`       | `integer` | `factor`  | This is a categorical attibrite
+`thal`     | `integer` | `factor`  | This is a categorical attibrite that can take 3 values
+`target`   | `integer` | `logical` | 1 (> 50% narrowing) = TRUE & 0 (< 50% narrowing) = FALSE 
+
+In order to assist interprettation of the data during further preprocessing, intermediate values will be used, where logical is replaced by a descriptive string that is co-erced into a factor. For example,
+
+ Attribute | Native    | Intermediate  | Comment
+---------- | -------   |---------      |---------------- 
+`sex`      | `integer` | `logical`     | 1 = Male & 0 = Female
+
+
+#### Sex (Gender of Subjects)
+As outlined above, the logical value of sex will be stored as in intermediate as `Male` or `Female`.
+```{r}
+# Checking the value counts
+count(ds, 'sex') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds$sex <- factor(ds$sex)
+ds$sex <- revalue(ds$sex, c('0' = "Female", '1' = "Male"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'sex') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### cp 
+The value `cp`, chest pain type, can any value of 0, 1, 2, 3. This will be changed to factors.
+```{r}
+# Checking the value counts
+count(ds, 'cp') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds$cp <- factor(ds$cp)
+ds$cp <- revalue(ds$cp, c('0' = "typicalAngina", '1' = "aTypicalAngina", 
+						'2' = "nonAnginalPain", '3' = "asymptomatic"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'cp') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### trestbps
+The attribute `trestbps`, resting blood pressure (mm Hg) on admission to hospital, will be checked breifly for outliers / unrealistic values (e.g., negative values).
+
+```{r}
+summary(ds$trestbps)
+```
+
+#### Chol
+The attribute `chol`, blood serum cholesterol (mg/dl), will be checked breifly for outliers / unrealistic values (e.g., negative values).
+
+```{r}
+summary(ds$chol)
+```
+
+#### fbs
+Blood sugar level, where fasting blood sugar > 120 mg/dl (1 = true, 0 = false)
+
+```{r}
+# Checking the value counts
+count(ds, 'fbs') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds$fbs <- factor(ds$fbs)
+ds$fbs <- revalue(ds$fbs, c('0' = "<= 1 20 mg/dl", '1' = "> 120 mg/dl"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'fbs') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### RestECG
+Resting electrocardiographic results
+* Value 0: normal
+* Value 1: having ST-T wave abnormality (T wave  inversions and/or ST elevation or depression of > 0.05 mV)
+* Value 2: showing probable or definite left ventricular  hypertrophy by Estes' criteria) 
+We will first check that all values are either 0, 1 or 2.
+
+```{r}
+# Checking the value counts
+count(ds, 'restecg') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds$restecg <- factor(ds$restecg)
+ds$restecg <- revalue(ds$restecg, c('0' = "Normal", 
+                                    '1' = "ST-T Wave Abnormality",
+                                    '2' = "LV Hypertrophy"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'restecg') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### Thalach
+The attribute `thalach`, maximum heart rate achieved, will be checked breifly for outliers / unrealistic values (e.g., negative values).
+```{r}
+summary(ds$thalach)
+```
+
+
+#### Exang
+The attribute `exang`, exercise induced angina, will be coerced directly to logical. 
+```{r}
+count(ds, 'exang') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+# Applying the change
+ds$exang <- as.logical(ds$exang)
+```
+
+```{r}
+count(ds, 'exang') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### oldpeak
+The value `oldpeak` is the ST depression induced by exercise relative to rest. This attribute will be checked breifly for outliers / unrealistic values (e.g., negative values).
+```{r}
+summary(ds$oldpeak)
+```
+
+#### slope
+The slope of the peak exercise ST segment
+* Value 1 (0) = Upsloping
+* Value 2 (1) = Flat
+* Value 3 (2) = Downsloping
+
+```{r}
+# Checking the value counts
+count(ds, 'slope') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds$slope <- factor(ds$slope)
+ds$slope <- revalue(ds$slope, c('0' = "Upsloping", 
+                                '1' = "Flat",
+                                '2' = "Downsloping"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'slope') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### ca 
+The number of vessels, colored by fluorsopy.
+
+```{r}
+# Checking the value counts
+count(ds, 'ca') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+There are five values present outside the correct range (0 - 3). 
+```{r}
+ds <-ds[!(ds$ca=="4"),]
+ds$ca <- factor(ds$ca)
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'ca') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### thal
+The attribute `thal` can take one of three values
+* 3 = normal
+* 6 = fixed defect
+* 7 = reversable defect
+```{r}
+# Checking the value counts
+count(ds, 'thal') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds <-ds[!(ds$thal=="0"),]
+ds$thal <- factor(ds$thal)
+ds$thal <- revalue(ds$thal, c('1' = "Normal", 
+                              '2' = "Fixed Defect",
+                              '3' = "Reversible Defect"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'thal') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+#### target
+Diagnosis of heart disease - angiographic disease status 
+* Value 0: < 50% diameter narrowing
+* Value 1: > 50% diameter narrowing
+```{r}
+# Checking the value counts
+count(ds, 'target') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r}
+ds$target <- factor(ds$target)
+ds$target <- revalue(ds$target, c('0' = "< 50% narrowing", 
+                                  '1' = "> 50% narrowing"))
+```
+
+```{r}
+# Checking the value counts
+count(ds, 'target') %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = F, font_size = 12) %>% 
+  column_spec(1:2, width = "10em")
+```
+
+```{r, message=FALSE, warning=FALSE, paged.print=TRUE}
+data.frame(Attribute_Number = c(1:14), Attribute_Name = names(ds), Attribute_Class = sapply(ds, class),
+           NA_Count = sapply(ds, function(y) sum(length(which(is.na(y))))), row.names = NULL) %>% 
+  kable(align = rep('c')) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),  font_size = 12)
+```
+
+## Data Visualisation
+
+### Age
+Whole dataset then facet by gender to identify trends.
+```{r}
+age_mean <- mean(ds$age)
+p <- ggplot(ds, aes(x = age))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 3, color = "black", fill = "white") + 
+  geom_segment(aes(x = age_mean, y = 0, xend = age_mean, yend = 0.0395, colour = "red"), 
+               size = 0.75, linetype = "dashed")
+p <- p + geom_density(alpha = 0.15, fill="grey36") + 
+  theme(legend.text = element_blank(), legend.key.width = unit(1.5,"cm")) + 
+  labs(color = "Mean Age")
+p <- p + labs(title = "Desity plot of Age for all data", x = "Age in Years", y = "Density")
+p
+```
+
+```{r}
+p <- ggplot(ds, aes(x = age, color=sex))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 3, fill = "white")
+p <- p + geom_density(alpha = 0.15, fill="grey36")
+p <- p + labs(title = "Desity plot of Age", x = "Age in Years", y = "Density")
+p <- p + facet_grid(vars(sex))
+p
+```
+
+### ST Depression
+Whole dataset then facet by gender to identify trends.
+```{r}
+oldPeak_mean <- mean(ds$oldpeak)
+p <- ggplot(ds, aes(x = oldpeak))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 0.2, color = "black", fill = "white") + 
+  geom_segment(aes(x = oldPeak_mean, y = 0, xend = oldPeak_mean, yend = 0.277, colour = "red"), 
+               size = 0.75, linetype = "dashed")
+p <- p + geom_density(alpha = 0.15, fill="grey36") + 
+  theme(legend.text = element_blank(), legend.key.width = unit(1.5,"cm")) + 
+  labs(color = "Mean of ST Depression")
+p <- p + labs(title = "Desity plot of ST depression induced by exercise relative to rest for all data", x = "ST Depression Induced by Execise", y = "Density")
+p
+```
+
+```{r}
+p <- ggplot(ds, aes(x = oldpeak, color = sex))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 0.2, fill = "white")
+p <- p + geom_density(alpha = 0.15, fill="grey36")
+p <- p + labs(title = "Desity plot of ST depression induced by exercise relative to rest", x = "ST Depression Induced by Execise", y = "Density")
+p <- p + facet_grid(vars(sex))
+p
+```
+
+### Resting Blood Pressure
+Whole dataset then facet by gender to identify trends.
+```{r}
+trestbps_mean <- mean(ds$trestbps)
+p <- ggplot(ds, aes(x = trestbps))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 5, color = "black", fill = "white") + 
+  geom_segment(aes(x = trestbps_mean, y = 0, xend = trestbps_mean, yend = 0.0239, colour = "red"), 
+               size = 0.75, linetype = "dashed")
+p <- p + geom_density(alpha = 0.15, fill="grey36") + 
+  theme(legend.text = element_blank(), legend.key.width = unit(1.5,"cm")) + 
+  labs(color = "Mean Resting BP")
+p <- p + labs(title = "Desity plot of Resting Blood Pressure for all data", x = "Resting Blood Pressure", y = "Density")
+p
+```
+
+```{r}
+p <- ggplot(ds, aes(x = trestbps, color = sex))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 5, fill = "white")
+p <- p + geom_density(alpha = 0.15, fill="grey36")
+p <- p + labs(title = "Desity plot of Resting Blood Pressure", x = "Resting Blood Pressure", y = "Density")
+p <- p + facet_grid(vars(sex))
+p
+```
+
+### Blood Serum Cholesterol
+Whole dataset then facet by gender to identify trends.
+```{r}
+chol_mean <- mean(ds$chol)
+p <- ggplot(ds, aes(x = chol))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 10, color = "black", fill = "white") + 
+  geom_segment(aes(x = chol_mean, y = 0, xend = chol_mean, yend = 0.0079, colour = "red"), 
+               size = 0.75, linetype = "dashed")
+p <- p + geom_density(alpha = 0.15, fill="grey36") + 
+  theme(legend.text = element_blank(), legend.key.width = unit(1.5,"cm")) + 
+  labs(color = "Mean Blood Serum Cholesterol")
+p <- p + labs(title = "Desity plot of Blood Serum Cholesterol for all data", x = "Blood Serum Cholesterol", y = "Density")
+p
+```
+
+```{r}
+p <- ggplot(ds, aes(x = chol, color = sex))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 10, color = "black", fill = "white")
+p <- p + geom_density(alpha = 0.15, fill="grey36") 
+p <- p + labs(title = "Desity plot of Blood Serum Cholesterol", x = "Blood Serum Cholesterol", y = "Density")
+p <- p + facet_grid(vars(sex))
+p
+```
+
+### Maximum Heart Rate
+Whole dataset then facet by gender to identify trends.
+```{r}
+thalach_mean <- mean(ds$thalach)
+p <- ggplot(ds, aes(x = thalach))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 6, color = "black", fill = "white") + 
+  geom_segment(aes(x = thalach_mean, y = 0, xend = thalach_mean, yend = 0.0160, colour = "red"), 
+               size = 0.75, linetype = "dashed")
+p <- p + geom_density(alpha = 0.15, fill="grey36") + 
+  theme(legend.text = element_blank(), legend.key.width = unit(1.5,"cm")) + 
+  labs(color = "Mean of Maximum Heart Rate")
+p <- p + labs(title = "Desity plot of Maximum Heart Rate Achieved for all data", x = "Max Heart Rate Acheived", y = "Density")
+p
+```
+
+```{r}
+p <- ggplot(ds, aes(x = thalach, color = sex))
+p <- p + geom_histogram(aes(y=..density..), binwidth = 6,  fill = "white")
+p <- p + geom_density(alpha = 0.15, fill="grey36")
+p <- p + labs(title = "Desity plot of Maximum Heart Rate Achieved", x = "Max Heart Rate Acheived", y = "Density")
+p <- p + facet_grid(vars(sex))
+p
+```
+
+### Plot of Age versus Angina faceted by Gender
+Faceted scatter plots used to identify trends.
+```{r}
+p <- ggplot(data = ds, aes(x = age, y = oldpeak, color = sex))
+p <- p + geom_point()
+p <- p + facet_grid(vars(fbs), vars(cp))
+p
+```
+
+### Plot of Age versus Angina faceted by Gender
+Faceted scatter plots used to identify trends.
+```{r}
+p <- ggplot(data = ds, aes(x = age, y = oldpeak, color = sex))
+p <- p + geom_point()
+p <- p + facet_grid(vars(fbs), vars(restecg))
+p
+```
+
+## Normalization
+
+All integer values will be normalized between 0 and 1
+```{r}
+str(ds)
+```
+
+```{r}
+ds$ageNorm <- (ds$age-min(ds$age))/(max(ds$age)-min(ds$age))
+ds$trestbpsNorm <- (ds$trestbps-min(ds$trestbps))/(max(ds$trestbps)-min(ds$trestbps))
+ds$cholNorm <- (ds$chol-min(ds$chol))/(max(ds$chol)-min(ds$chol))
+ds$thalachNorm <- (ds$thalach-min(ds$thalach))/(max(ds$thalach)-min(ds$thalach))
+ds$oldpeakNorm <- (ds$oldpeak-min(ds$oldpeak))/(max(ds$oldpeak)-min(ds$oldpeak))
+```
+
+```{r}
+str(ds)
+```
+
+```{r}
+summary(ds$ageNorm)
+```
+```{r}
+summary(ds$trestbpsNorm)
+```
+
+```{r}
+summary(ds$cholNorm)
+```
+
+```{r}
+summary(ds$thalachNorm)
+```
+
+```{r}
+summary(ds$oldpeakNorm)
+```
+
+## Summary
+All data was preprocessed, with all attributes allocated an appropriate data type, all NA values were identified and removed, and all numeric values were normalized.
+
+[^1]: https://archive.ics.uci.edu/ml/datasets/Heart+Disease
+[^2]: https://www.kaggle.com/ronitf/heart-disease-uci
+
+
